@@ -345,13 +345,6 @@ if __name__ == "__main__":
 
     # 尝试加载 aeiou，成功后自动播放一句示例口型
     demo_sentence = "Hello, nice to meet you!"
-    #demo_sentence = "Apple " * 10
-    #demo_sentence = "I love you !" * 10
-    #if manager.start_viseme_playback(demo_sentence):
-    #    print(f"✓ 元音口型已启动，示例句: {demo_sentence!r}")
-    #else:
-    #    print("  未启用元音口型（需安装: pip install cmudict）")
-    #print("  提示: 请先【点击 Live2D 窗口】再按 [空格] 播放口型并触发动作")
 
     while running:
         for event in pygame.event.get():

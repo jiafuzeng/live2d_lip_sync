@@ -1,0 +1,227 @@
+# Live2D 口型同步（Lip Sync）
+
+基于 Live2D Cubism 3 的 gal 模型管理器，支持英文文本转口型（viseme）、表情与动作控制，可在 Pygame + OpenGL 窗口中渲染模型与背景。
+
+---
+
+## 目录
+
+- [环境要求](#环境要求)
+- [目录结构](#目录结构)
+- [依赖安装](#依赖安装)
+- [资源准备](#资源准备)
+- [部署与运行](#部署与运行)
+- [配置说明](#配置说明)
+- [常见问题](#常见问题)
+
+---
+
+## 环境要求
+
+| 项目 | 要求 |
+|------|------|
+| 操作系统 | macOS / Linux / Windows（需支持 OpenGL） |
+| Python | **3.9 及以上**（推荐 3.11） |
+| 显示 | 支持 OpenGL 2.1 或更高（macOS 上多为 2.1） |
+
+---
+
+## 目录结构
+
+```
+live2d_lip_sync/
+├── readme                 # 本说明（部署文档）
+├── live2d_deam_gal.py     # 主入口：Live2D gal 模型管理器与本地调试
+├── image_compat.py        # 背景图兼容层（OpenGL 2.1 纹理绘制）
+├── background/
+│   └── img_.py            # 背景图路径（如 RING.png）获取
+├── aeiou/
+│   ├── phoneme_viseme.py  # 英文→音素→口型（LipMode.POLLY / MS_ID）
+│   ├── viseme_standards.py
+│   ├── README.md
+│   └── test.py            # 口型命令行 demo
+└── Resources/
+    └── v3/
+        └── gal/           # gal 模型资源（.model3.json、motions、textures 等）
+            └── gal.model3.json
+```
+
+- **模型路径**：默认使用 `Resources/v3/gal/gal.model3.json`，可在构造 `Live2DModelManager` 时通过 `model_path` 覆盖。
+- **背景图**：优先使用 `background/` 目录下 `get_background_image_path()` 返回的路径（当前为同目录下的 `RING.png`）；若无则可不设背景。
+
+---
+
+## 依赖安装
+
+### 1. 创建并激活虚拟环境（推荐）
+
+```bash
+cd /path/to/live2d_lip_sync
+
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+```
+
+### 2. 安装 Python 依赖
+
+```bash
+# 核心：Live2D 绑定、Pygame、OpenGL、图像
+pip install live2d-py pygame PyOpenGL PyOpenGL-accelerate numpy Pillow
+
+# 口型同步（英文→音素→viseme）依赖
+pip install cmudict
+```
+
+| 包名 | 用途 |
+|------|------|
+| `live2d-py` | Live2D Cubism 3 模型加载与渲染 |
+| `pygame` | 窗口与事件（OPENGL 模式） |
+| `PyOpenGL` / `PyOpenGL-accelerate` | OpenGL 上下文与纹理（背景图） |
+| `numpy` | image_compat 中数组处理 |
+| `Pillow` | 背景图解码（image_compat） |
+| `cmudict` | 英文 G2P，用于 aeiou 口型序列 |
+
+### 3. 一键安装（可选）
+
+在项目根目录创建 `requirements.txt` 后执行：
+
+```bash
+pip install -r requirements.txt
+```
+
+`requirements.txt` 示例：
+
+```text
+live2d-py
+pygame
+PyOpenGL
+PyOpenGL-accelerate
+numpy
+Pillow
+cmudict
+```
+
+---
+
+## 资源准备
+
+1. **Live2D 模型**  
+   - 将 gal 模型放在 `Resources/v3/gal/` 下，并确保主文件名为 `gal.model3.json`（或修改代码中的 `MODEL_PATH_V3` / 构造参数）。
+   - 目录内需包含该 model3.json 所引用的 motions、textures 等资源。
+
+2. **背景图（可选）**  
+   - 在 `background/` 目录下放置 `RING.png`，或修改 `background/img_.py` 中的 `RING_NAME` 与逻辑，使 `get_background_image_path()` 返回正确路径。
+   - 若不需要背景，不放置即可；程序会跳过背景绘制。
+
+3. **运行目录**  
+   - 建议在**项目根目录**下执行 `python live2d_deam_gal.py`，以便相对路径 `Resources/v3/gal/` 与 `background/img_.py` 的路径解析正确。
+
+---
+
+## 部署与运行
+
+### 直接运行主程序（本地调试）
+
+```bash
+cd /path/to/live2d_lip_sync
+python live2d_deam_gal.py
+```
+
+行为说明：
+
+- 打开 Pygame + OpenGL 窗口，加载 gal 模型并播放 Idle 动作。
+- **鼠标左键拖拽**：移动模型。
+- **空格键**：播放示例句口型（"Hello, nice to meet you!"），依赖 aeiou + cmudict。
+- 关闭窗口即退出。
+
+### 作为模块被其他项目调用
+
+```python
+from live2d_deam_gal import Live2DModelManager
+
+manager = Live2DModelManager(
+    model_path=None,           # 默认 Resources/v3/gal/gal.model3.json
+    display_size=(1000, 1200),
+    background_path=None,      # 默认用 background 下 RING.png 或无背景
+    title="我的 Live2D 窗口",
+)
+
+manager.play_idle_motion()
+manager.start_viseme_playback("Hello, nice to meet you!")  # 口型序列
+
+# 主循环中每帧调用
+# manager.update()
+# manager.draw_background()
+# manager.draw()
+# pygame.display.flip()
+# manager.tick()
+```
+
+部署到服务器或无图形界面环境时，需提供虚拟显示（如 Xvfb）或仅将本仓库作为“模型 + 口型逻辑”库使用，由上层在可渲染环境中创建窗口。
+
+---
+
+## 配置说明
+
+### 口型模式（LipMode）
+
+在 `live2d_deam_gal.py` 中，类属性 `LIP_MODE` 决定口型数据格式：
+
+```python
+# 二选一
+LIP_MODE: LipMode = LipMode.POLLY   # 使用 label / open / form 驱动 ParamMouthOpenY、ParamMouthForm
+LIP_MODE: LipMode = LipMode.MS_ID   # 使用 Microsoft 风格 viseme ID (0–21)，由内部映射到张嘴度
+```
+
+- **POLLY**：适合直接驱动 Live2D 的 ParamMouthOpenY / ParamMouthForm。
+- **MS_ID**：便于与 Azure TTS 等返回 MS viseme 的引擎对齐，再在本地做 id→口型映射。
+
+### 窗口与模型路径
+
+- 窗口大小：`Live2DModelManager.WINDOW_WIDTH / WINDOW_HEIGHT` 或构造参数 `display_size`。
+- 模型路径：构造参数 `model_path`（相对 `Resources` 或绝对路径，依当前代码约定）。
+- 背景图：构造参数 `background_path`，或依赖 `background/img_.py` 的默认逻辑。
+
+---
+
+## 常见问题
+
+### 1. `ModuleNotFoundError: No module named 'live2d'`
+
+- 未安装 `live2d-py` 或未在正确的虚拟环境中运行。  
+- 解决：`pip install live2d-py`，并确认 `python` 指向该环境。
+
+### 2. `ModuleNotFoundError: No module named 'viseme_standards'`
+
+- aeiou 依赖同目录下的 `viseme_standards.py`，且以包形式导入时需从 `aeiou.viseme_standards` 引用。  
+- 解决：保证 `aeiou/viseme_standards.py` 存在，且从项目根目录或以包方式运行（如 `python -m ...` 或 `python live2d_deam_gal.py`）。
+
+### 3. 未检测到 cmudict / 口型不播放
+
+- 口型序列依赖 `cmudict` 做英文 G2P。  
+- 解决：`pip install cmudict`，按空格后应能播放示例句口型。
+
+### 4. 背景图加载失败 / 不显示
+
+- 使用 `image_compat.Image` 通过 OpenGL 纹理绘制，依赖 Pillow 与 PyOpenGL。  
+- 检查：`background/get_background_image_path()` 返回的路径是否存在、是否为有效图片；若无需背景，可移除或留空该路径。
+
+### 5. macOS 上 CoreAudio / mixer 报错
+
+- 主程序在初始化时会尝试 `pygame.mixer.init()`，失败会被捕获并忽略，不影响无音频的模型与口型展示。
+
+### 6. OpenGL 版本
+
+- `image_compat.py` 针对 OpenGL 2.1 兼容编写，适用于 macOS 等仅支持 2.1 的环境；更高版本 OpenGL 亦可使用。
+
+---
+
+## 简要检查清单（部署前）
+
+- [ ] Python 3.9+，虚拟环境已激活  
+- [ ] 已安装：live2d-py, pygame, PyOpenGL, numpy, Pillow, cmudict  
+- [ ] `Resources/v3/gal/gal.model3.json` 存在且资源完整  
+- [ ] （可选）`background/RING.png` 存在  
+- [ ] 在项目根目录执行：`python live2d_deam_gal.py`  
+
+完成以上步骤后，即可按本文档进行部署与运行。口型相关更多说明见 `aeiou/README.md`。
