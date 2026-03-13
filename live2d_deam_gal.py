@@ -18,37 +18,9 @@ from live2d.v3 import StandardParams
 from image_compat import Image
 from aeiou.phoneme_viseme import LipMode, text_to_lip_units
 from aeiou.phoneme_viseme import text_to_timed_visemes_fallback
+from aeiou.viseme_ms import MS_VISEME_ID_TO_PARAMS
+from aeiou.viseme_disney import DISNEY_VISEME_ID_TO_PARAMS
 from background.img_ import get_background_image_path
-
-# MS viseme ID → (open, form) 近似映射（0.0–1.0），用于 MS_ID 模式下驱动嘴型
-MS_VISEME_ID_TO_PARAMS: dict[int, tuple[float, float]] = {
-    # 0: 静音
-    0: (0.0, 0.0),
-    # 元音 / 双元音
-    1: (0.7, -0.1),   # æ, ə, ʌ
-    2: (0.9, 0.0),    # ɑ
-    3: (0.7, -0.5),   # ɔ
-    4: (0.6, 0.0),    # ɛ, ʊ
-    5: (0.6, 0.1),    # ɝ
-    6: (0.8, 0.5),    # j, i, ɪ - 扁长
-    7: (0.6, -0.6),   # w, u - 圆嘴
-    8: (0.7, -0.5),   # o
-    9: (0.8, -0.2),   # aʊ
-    10: (0.7, -0.1),  # ɔɪ
-    11: (0.8, 0.2),   # aɪ
-    # 辅音
-    12: (0.4, 0.0),   # h
-    13: (0.4, 0.2),   # r
-    14: (0.5, 0.2),   # l
-    15: (0.3, 0.4),   # s, z
-    16: (0.35, 0.3),  # ʃ, tʃ, dʒ, ʒ
-    17: (0.35, 0.2),  # ð
-    18: (0.25, 0.0),  # f, v
-    19: (0.3, 0.1),   # d, t, n, θ
-    20: (0.25, 0.0),  # k, g, ŋ
-    21: (0.2, 0.0),   # p, b, m
-}
-
 # 初始化 Live2D 日志
 live2d.enableLog(True)
 live2d.setLogLevel(live2d.Live2DLogLevels.LV_INFO)
@@ -96,9 +68,13 @@ class Live2DModelManager:
     #MODEL_PATH_V3 = "v3/Haru/Haru.model3.json"
     BACKGROUND_IMAGE = "RING.png"
 
-    # 口型驱动模式（默认使用 Polly(open/form)；也可以切换为 MS viseme ID）
+    # 口型驱动模式（可在类属性或运行时修改）：
+    # - POLLY:  使用 aeiou 的 label/open/form，直接映射到 ParamMouthOpenY/Form（细节丰富，推荐默认）
+    # - MS_ID:  使用 Microsoft 0–21 viseme ID，并通过 MS_VISEME_ID_TO_PARAMS 近似映射到 open/form
+    # - DISNEY: 使用 Disney 12 口型类别 ID，并通过 DISNEY_VISEME_ID_TO_PARAMS 近似映射到 open/form
     LIP_MODE: LipMode = LipMode.POLLY
     #LIP_MODE: LipMode = LipMode.MS_ID
+    #LIP_MODE: LipMode = LipMode.DISNEY
 
     # 口型参数名 → Live2D StandardParams 映射
     PARAM_MAP = {
@@ -156,7 +132,7 @@ class Live2DModelManager:
         # 元音/口型播放：消费 list，按间隔取一条驱动嘴型，list 空则嘴型归 0
         self._timed_visemes: list[tuple[str, float, float, float, float]] = []
         self._next_consume_ticks: Optional[int] = None  # 下一帧可消费的时间点（ms）
-        self._consume_interval_ms: int = 250  # 每条口型间隔（约 0.25s）
+        self._consume_interval_ms: int = 120  # 每条口型间隔（约 0.25s）
 
         # 从 model3.json 解析表情列表（FileReferences.Expressions[].Name）
         self.available_expressions = self._parse_expressions_from_model_json(full_path)
@@ -312,8 +288,12 @@ if __name__ == "__main__":
     # - POLLY:  aeiou 直接返回 label/open/form，映射到 ParamMouthOpenY/Form，细节更丰富，适合本地调试
     # - MS_ID:  使用 Microsoft 官方 0–21 viseme ID，再通过 MS_VISEME_ID_TO_PARAMS 近似映射到 open/form，
     #           方便与 Azure TTS 等返回 viseme ID 的服务对齐
-    manager.LIP_MODE = LipMode.POLLY
+    # - DISNEY: 使用 Disney 12 口型类别 ID，通过 DISNEY_VISEME_ID_TO_PARAMS 近似映射到 open/form，
+    #           适合希望沿用传统 12 口型设计的场景
+    
+    #manager.LIP_MODE = LipMode.POLLY
     #manager.LIP_MODE = LipMode.MS_ID
+    manager.LIP_MODE = LipMode.DISNEY
 
     # 尝试加载 aeiou，成功后自动播放一句示例口型
     demo_sentence = "Hello, nice to meet you!"
@@ -381,6 +361,16 @@ if __name__ == "__main__":
                 vid = int(item.get("id", 0))
                 base_open, base_form = MS_VISEME_ID_TO_PARAMS.get(vid, (0.3, 0.0))
                 print(f"  播放 MS viseme ID: {vid}, open={base_open:.1f}, form={base_form:.1f}")
+                manager.update_lip_params({
+                    "ParamMouthOpenY": base_open,
+                    "ParamMouthForm": base_form,
+                })
+
+            # Disney 12 口型模式：item 只有 id，可在这里自定义 id→张嘴映射
+            elif manager.LIP_MODE == LipMode.DISNEY and "id" in item:
+                did = int(item.get("id", 0))
+                base_open, base_form = DISNEY_VISEME_ID_TO_PARAMS.get(did, (0.3, 0.0))
+                print(f"  播放 Disney viseme ID: {did}, open={base_open:.1f}, form={base_form:.1f}")
                 manager.update_lip_params({
                     "ParamMouthOpenY": base_open,
                     "ParamMouthForm": base_form,

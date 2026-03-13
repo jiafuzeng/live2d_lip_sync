@@ -13,11 +13,9 @@ import re
 from enum import Enum
 from typing import Iterable, List, Sequence, Tuple
 
-from aeiou.viseme_standards import (
-    phonemes_to_visemes,
-    smooth_visemes,
-    phonemes_to_ms_viseme_ids,
-)
+from aeiou.viseme_polly import phonemes_to_visemes, smooth_visemes
+from aeiou.viseme_ms import phonemes_to_ms_viseme_ids
+from aeiou.viseme_disney import phonemes_to_disney_viseme_ids
 
 try:
     import cmudict  # type: ignore[import-not-found]
@@ -36,10 +34,12 @@ class LipMode(str, Enum):
 
     - POLLY: 返回带有 label/open/form 的口型单元（适合直接驱动 Live2D ParamMouthOpenY / ParamMouthForm）
     - MS_ID: 返回 Microsoft 风格的 viseme ID（0–21），用于在上层做自定义映射
+    - DISNEY: 返回 Disney 12 口型类别 ID（1–12），用于按经典 12 口型驱动
     """
 
     POLLY = "polly"
     MS_ID = "ms_id"
+    DISNEY = "disney"
 
 
 def text_to_phonemes_cmudict(text: str) -> list[str]:
@@ -110,10 +110,11 @@ def text_to_lip_units(
     release_alpha: float = 0.2,
 ) -> list[dict]:
     """
-    高层封装：一句英文文本 → 口型「单元」列表，支持两种模式：
+    高层封装：一句英文文本 → 口型「单元」列表，支持多种模式：
 
     - LipMode.POLLY: 返回 [{"label": str, "open": float, "form": float}, ...]
-    - LipMode.MS_ID: 返回 [{"id": int}, ...]，id 为 0–21 的占位 viseme ID
+    - LipMode.MS_ID: 返回 [{"id": int}, ...]，id 为 0–21 的 Microsoft viseme ID
+    - LipMode.DISNEY: 返回 [{"id": int}, ...]，id 为 1–12 的 Disney 口型类别 ID
 
     这样上层（如 live2d_deam_gal.py）只需要根据 mode 分支消费即可。
     """
@@ -137,6 +138,10 @@ def text_to_lip_units(
 
     if mode == LipMode.MS_ID:
         ids = phonemes_to_ms_ids(phonemes)
+        return [{"id": int(v)} for v in ids]
+
+    if mode == LipMode.DISNEY:
+        ids = phonemes_to_disney_viseme_ids(phonemes)
         return [{"id": int(v)} for v in ids]
 
     # 未知模式，兜底为空列表，避免上层崩溃
