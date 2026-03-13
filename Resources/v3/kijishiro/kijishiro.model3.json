@@ -1,0 +1,88 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "kijishiro.moc3",
+		"Textures": [
+			"kijishiro.2048/texture_00.png"
+		],
+		"Physics": "kijishiro.physics3.json",
+		"DisplayInfo": "kijishiro.cdi3.json",
+		"Expressions": [
+			{
+				"Name": "angry",
+				"File": "angry.exp3.json"
+			},
+			{
+				"Name": "happy",
+				"File": "happy.exp3.json"
+			},
+			{
+				"Name": "joy",
+				"File": "joy.exp3.json"
+			},
+			{
+				"Name": "sad",
+				"File": "sad.exp3.json"
+			}
+		],
+		"Motions": {
+			"TapBody": [
+				{
+					"File": "motion_Talk.motion3.json",
+					"FadeInTime": 0,
+					"FadeOutTime": 0
+				},
+				{
+					"File": "motion_confused.motion3.json",
+					"FadeInTime": 0,
+					"FadeOutTime": 0
+				},
+				{
+					"File": "motion_praise.motion3.json",
+					"FadeInTime": 0,
+					"FadeOutTime": 0
+				},
+				{
+					"File": "motion_think.motion3.json",
+					"FadeInTime": 0,
+					"FadeOutTime": 0
+				},
+				{
+					"File": "motion_praise.motion3.json",
+					"FadeInTime": 0,
+					"FadeOutTime": 0
+				},
+				{
+					"File": "motion_think.motion3.json",
+					"FadeInTime": 0,
+					"FadeOutTime": 0
+				}
+			],
+			"Idle": [
+				{
+					"File": "motion_listen.motion3.json",
+					"FadeInTime": 0,
+					"FadeOutTime": 0
+				}
+			]
+		}
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": [
+				"ParamMouthOpenY"
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeLOpen",
+				"ParamEyeROpen"
+			]
+		}
+	],
+	"HitAreas": []
+}

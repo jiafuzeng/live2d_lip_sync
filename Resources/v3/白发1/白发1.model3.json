@@ -1,0 +1,47 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "白发1.moc3",
+		"Textures": [
+			"白发1.4096/texture_00.png",
+			"白发1.4096/texture_01.png",
+			"白发1.4096/texture_02.png",
+			"白发1.4096/texture_03.png",
+			"白发1.4096/texture_04.png"
+		],
+		"Physics": "白发1.physics3.json",
+		"DisplayInfo": "白发1.cdi3.json",
+		"Expressions": [
+			{
+				"Name": "aixin",
+				"File": "aixin.exp3.json"
+			},
+			{
+				"Name": "haixiu",
+				"File": "haixiu.exp3.json"
+			},
+			{
+				"Name": "heilian ",
+				"File": "heilian .exp3.json"
+			}
+		]
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": [
+				"ParamEyeLOpen",
+				"ParamEyeROpen"
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeLOpen",
+				"ParamEyeROpen"
+			]
+		}
+	]
+}

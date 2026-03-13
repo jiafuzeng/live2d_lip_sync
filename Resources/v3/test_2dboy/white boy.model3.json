@@ -1,0 +1,53 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "white boy.moc3",
+		"Textures": [
+			"white boy.8192/texture_00.png",
+			"white boy.8192/texture_01.png",
+			"white boy.8192/texture_02.png",
+			"white boy.8192/texture_03.png",
+			"white boy.8192/texture_04.png"
+		],
+		"Physics": "white boy.physics3.json",
+		"DisplayInfo": "white boy.cdi3.json",
+		"Motions": {
+			"Idle": [
+				{
+					"File": "xunhuan.motion3.json",
+					"FadeInTime": 0.5,
+					"FadeOutTime": 0.5
+				}
+			],
+			"TapBody": [
+				{
+					"File": "xunhuan.motion3.json",
+					"FadeInTime": 0.5,
+					"FadeOutTime": 0.5
+				}
+			],
+			"xunhuan": [
+				{
+					"File": "xunhuan.motion3.json",
+					"FadeInTime": 0.5,
+					"FadeOutTime": 0.5
+				}
+			]
+		}
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		},
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeLOpen",
+				"ParamEyeROpen"
+			]
+		}
+	]
+}
