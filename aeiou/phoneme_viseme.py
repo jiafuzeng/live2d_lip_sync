@@ -74,7 +74,8 @@ def phonemes_to_smoothed_visemes(
     返回：(label, ParamMouthOpen, ParamMouthForm) 列表。
     """
     base = phonemes_to_visemes(list(phonemes))
-    return smooth_visemes(base, attack_alpha=attack_alpha, release_alpha=release_alpha)
+    #return smooth_visemes(base, attack_alpha=attack_alpha, release_alpha=release_alpha)
+    return base
 
 
 def phonemes_to_ms_ids(phonemes: Sequence[str]) -> list[int]:

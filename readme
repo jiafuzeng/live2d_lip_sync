@@ -214,6 +214,16 @@ LIP_MODE: LipMode = LipMode.MS_ID   # 使用 Microsoft 风格 viseme ID (0–21)
 
 - `image_compat.py` 针对 OpenGL 2.1 兼容编写，适用于 macOS 等仅支持 2.1 的环境；更高版本 OpenGL 亦可使用。
 
+### 7. 按空格口型不动 / 前几次按空格无反应（含纯终端运行）
+
+**可能原因（不限于 IDE）：**
+
+1. **键盘焦点**：从终端直接运行 `python live2d_deam_gal.py` 时，焦点往往仍在终端，前几次按空格被终端接收，Pygame 收不到。SDL2 在 macOS 上新窗口有时不会自动获得焦点。
+2. **窗口未成为 key window**：代码在窗口创建后会尝试对 NSWindow 调 `makeKeyAndOrderFront`，使窗口前置并接收按键；若仍无效，请**用鼠标点击一次 Live2D 窗口**后再按空格。
+3. **按键 repeat 被误过滤**：部分环境下前几次 KEYDOWN 可能带 `repeat=True`，原先仅靠该标志过滤长按会误忽略；已改为「时间间隔 cooldown」：首次按键或距上次触发超过 400ms 即触发，避免误过滤。
+
+**建议**：若按空格无反应，先**点击一次 Live2D 窗口**再按空格。
+
 ---
 
 ## 简要检查清单（部署前）

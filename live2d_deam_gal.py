@@ -8,6 +8,7 @@ live2d_deam_G.py - Live2D 模型管理器（G 模型专用）
 
 import json
 import os
+import sys
 from typing import Optional
 
 import pygame
@@ -19,9 +20,65 @@ from aeiou.phoneme_viseme import LipMode, text_to_lip_units
 from aeiou.phoneme_viseme import text_to_timed_visemes_fallback
 from background.img_ import get_background_image_path
 
+# MS viseme ID → (open, form) 近似映射（0.0–1.0），用于 MS_ID 模式下驱动嘴型
+MS_VISEME_ID_TO_PARAMS: dict[int, tuple[float, float]] = {
+    # 0: 静音
+    0: (0.0, 0.0),
+    # 元音 / 双元音
+    1: (0.7, -0.1),   # æ, ə, ʌ
+    2: (0.9, 0.0),    # ɑ
+    3: (0.7, -0.5),   # ɔ
+    4: (0.6, 0.0),    # ɛ, ʊ
+    5: (0.6, 0.1),    # ɝ
+    6: (0.8, 0.5),    # j, i, ɪ - 扁长
+    7: (0.6, -0.6),   # w, u - 圆嘴
+    8: (0.7, -0.5),   # o
+    9: (0.8, -0.2),   # aʊ
+    10: (0.7, -0.1),  # ɔɪ
+    11: (0.8, 0.2),   # aɪ
+    # 辅音
+    12: (0.4, 0.0),   # h
+    13: (0.4, 0.2),   # r
+    14: (0.5, 0.2),   # l
+    15: (0.3, 0.4),   # s, z
+    16: (0.35, 0.3),  # ʃ, tʃ, dʒ, ʒ
+    17: (0.35, 0.2),  # ð
+    18: (0.25, 0.0),  # f, v
+    19: (0.3, 0.1),   # d, t, n, θ
+    20: (0.25, 0.0),  # k, g, ŋ
+    21: (0.2, 0.0),   # p, b, m
+}
+
 # 初始化 Live2D 日志
 live2d.enableLog(True)
 live2d.setLogLevel(live2d.Live2DLogLevels.LV_INFO)
+
+
+def _make_pygame_window_key_macos() -> None:
+    """
+    macOS：让当前 Pygame 窗口成为 key window 并前置，便于直接收到按键。
+    即使从终端直接运行，SDL2 创建的新窗口有时不会自动获得键盘焦点；
+    对 NSWindow 调 makeKeyAndOrderFront 可提高第一次按空格就触发的概率。
+    """
+    if sys.platform != "darwin":
+        return
+    try:
+        info = pygame.display.get_wm_info()
+        nswindow_ptr = info.get("window") or info.get("nswindow")
+        if not nswindow_ptr:
+            return
+        import ctypes
+        from ctypes import c_void_p
+
+        objc = ctypes.CDLL("/usr/lib/libobjc.A.dylib")
+        objc.sel_registerName.restype = c_void_p
+        objc.sel_registerName.argtypes = [ctypes.c_char_p]
+        objc.objc_msgSend.restype = c_void_p
+        objc.objc_msgSend.argtypes = [c_void_p, c_void_p, c_void_p]
+        sel = objc.sel_registerName(b"makeKeyAndOrderFront:")
+        objc.objc_msgSend(ctypes.c_void_p(nswindow_ptr), sel, ctypes.c_void_p(0))
+    except Exception:
+        pass
 
 
 class Live2DModelManager:
@@ -34,18 +91,20 @@ class Live2DModelManager:
     # 动画配置
     FPS = 60  # 默认帧率
 
-    # 口型同步配置
-    MOUTH_OPEN_SCALE = 10.0  # 嘴巴开合缩放系数
-    MOUTH_RMS_THRESHOLD = 0.01
-    RMS_DECAY_FACTOR = 0.95
-
     # gal 模型资源路径
     MODEL_PATH_V3 = "v3/gal/gal.model3.json"
+    #MODEL_PATH_V3 = "v3/Haru/Haru.model3.json"
     BACKGROUND_IMAGE = "RING.png"
 
     # 口型驱动模式（默认使用 Polly(open/form)；也可以切换为 MS viseme ID）
-    #LIP_MODE: LipMode = LipMode.POLLY
-    LIP_MODE: LipMode = LipMode.MS_ID
+    LIP_MODE: LipMode = LipMode.POLLY
+    #LIP_MODE: LipMode = LipMode.MS_ID
+
+    # 口型参数名 → Live2D StandardParams 映射
+    PARAM_MAP = {
+        "ParamMouthOpenY": StandardParams.ParamMouthOpenY,
+        "ParamMouthForm": StandardParams.ParamMouthForm,
+    }
 
     def __init__(
         self,
@@ -71,6 +130,7 @@ class Live2DModelManager:
             pass
         pygame.display.set_mode(display_size, DOUBLEBUF | OPENGL)
         pygame.display.set_caption(title)
+        _make_pygame_window_key_macos()
 
         # 初始化 Live2D 框架
         live2d.init()
@@ -96,7 +156,7 @@ class Live2DModelManager:
         # 元音/口型播放：消费 list，按间隔取一条驱动嘴型，list 空则嘴型归 0
         self._timed_visemes: list[tuple[str, float, float, float, float]] = []
         self._next_consume_ticks: Optional[int] = None  # 下一帧可消费的时间点（ms）
-        self._consume_interval_ms: int = 250  # 每条口型间隔（约 0.08s）
+        self._consume_interval_ms: int = 250  # 每条口型间隔（约 0.25s）
 
         # 从 model3.json 解析表情列表（FileReferences.Expressions[].Name）
         self.available_expressions = self._parse_expressions_from_model_json(full_path)
@@ -133,35 +193,16 @@ class Live2DModelManager:
                 return
         self.set_random_expression()
 
-    def update_lip_sync(self, rms: float) -> None:
-        """更新口型同步"""
-        # RMS 衰减
-        if rms > 0:
-            rms *= self.RMS_DECAY_FACTOR
-            if rms < self.MOUTH_RMS_THRESHOLD:
-                rms = 0.0
-        self.current_audio_rms = rms
-
-        # 更新口型参数
-        if rms > self.MOUTH_RMS_THRESHOLD:
-            mouth_open = min(rms * self.MOUTH_OPEN_SCALE, 1.0)
-            self.model.SetParameterValue(StandardParams.ParamMouthOpenY, mouth_open)
-        else:
-            self.model.SetParameterValue(StandardParams.ParamMouthOpenY, 0.0)
-
     def update_lip_params(self, params: dict) -> None:
         """根据口型参数更新嘴型（ParamMouthOpenY、ParamMouthForm 等），与 live2d_manager 一致"""
-        param_map = {
-            "ParamMouthOpenY": StandardParams.ParamMouthOpenY,
-            "ParamMouthForm": StandardParams.ParamMouthForm,
-        }
         for key, value in params.items():
-            if key in param_map and isinstance(value, (int, float)):
+            if key in self.PARAM_MAP and isinstance(value, (int, float)):
                 try:
-                    result = round(float(value), 4)
-                    self.model.SetParameterValue(param_map[key], result)
+                    result = round(float(value), 1)
+                    #print(f"设置口型参数: {key}={result}")
+                    self.model.SetParameterValue(self.PARAM_MAP[key], result)
                 except Exception:
-                    pass
+                    print(f"设置口型参数失败: {key}={value}")
 
     # 之前的元音参数驱动先保留为占位（当前恢复为通用 ParamMouthOpenY/ParamMouthForm 驱动）
     def _reset_vowel_params(self) -> None:
@@ -174,84 +215,8 @@ class Live2DModelManager:
         返回 True 表示成功启动，False 表示未安装 aeiou 或文本无有效口型。
         """
         try:
-            #txt = (text or "").strip().lower()
-            #if txt == "apple":
-            #    # 针对 Apple 做一份手工口型：大 A，然后轻微闭合到 p/l
-            #    self._timed_visemes = [
-            #        {"label": "a", "open": 1.0, "form": 0.2},
-            #        {"label": "p", "open": 0.3, "form": 0.0},
-            #        {"label": "l", "open": 0.2, "form": 0.0},
-            #    ]
-            #elif txt == "nice to meet you":
-            #    # 针对 "nice to meet you" 手工设计嘴型轨迹：
-            #    # - nice: a → i
-            #    # - to:   u
-            #    # - meet: i （加长两帧，开口更大）
-            #    # - you:  u （加长两帧，圆嘴更明显）
-            #    self._timed_visemes = [
-            #        {"label": "a", "open": 0.9, "form": 0.2},   # nice: na-
-            #        {"label": "i", "open": 0.7, "form": 0.3},   # nice: -ice
-
-            #        {"label": "u", "open": 0.7, "form": -0.5},  # to
-
-            #        {"label": "i", "open": 1.0, "form": 0.4},   # meet (hold)
-            #        {"label": "i", "open": 0.9, "form": 0.4},   # meet (decay)
-
-            #        {"label": "u", "open": 0.9, "form": -0.5},  # you (hold)
-            #        {"label": "u", "open": 0.7, "form": -0.5},  # you (decay)
-            #    ]
-            #else:
-                # 统一通过 aeiou.text_to_lip_units 生成口型单元，模式可配置
             self._timed_visemes = text_to_lip_units(text, mode=self.LIP_MODE)
-            # 固定口型序列（用于调试消费/驱动链路）
-            # 结构：{"label": str, "open": float, "form": float}
-            #self._timed_visemes = [
-            #    {"label": "a", "open": 1.0, "form": 0.2},
-            #    {"label": "r", "open": 0.4, "form": -0.3},
-            #    {"label": "t", "open": 0.3, "form": 0.2},
-            #    {"label": "@", "open": 0.6, "form": 0.2},
-            #    {"label": "f", "open": 0.2, "form": -0.2},
-            #    {"label": "i", "open": 0.8, "form": 0.4},
-            #    {"label": "S", "open": 0.25, "form": 0.4},
-            #    {"label": "@", "open": 0.6, "form": 0.2},
-            #    {"label": "l", "open": 0.35, "form": 0.2},
-            #    {"label": "i", "open": 0.8, "form": 0.4},
-            #    {"label": "t", "open": 0.3, "form": 0.2},
-            #    {"label": "t", "open": 0.3, "form": 0.2},
-            #    {"label": "E", "open": 0.7, "form": 0.3},
-            #    {"label": "l", "open": 0.35, "form": 0.2},
-            #    {"label": "@", "open": 0.6, "form": 0.2},
-            #    {"label": "S", "open": 0.25, "form": 0.4},
-            #    {"label": "@", "open": 0.6, "form": 0.2},
-            #    {"label": "t", "open": 0.3, "form": 0.2},
-            #    {"label": "s", "open": 0.2, "form": 0.5},
-            #    {"label": "i", "open": 0.8, "form": 0.4},
-            #    {"label": "s", "open": 0.2, "form": 0.5},
-            #    {"label": "t", "open": 0.3, "form": 0.2},
-            #    {"label": "r", "open": 0.4, "form": -0.3},
-            #    {"label": "a", "open": 1.0, "form": 0.2},
-            #    {"label": "t", "open": 0.3, "form": 0.2},
-            #    {"label": "s", "open": 0.2, "form": 0.5},
-            #    {"label": "f", "open": 0.2, "form": -0.2},
-            #    {"label": "O", "open": 0.7, "form": -0.7},
-            #    {"label": "r", "open": 0.4, "form": -0.3},
-            #    {"label": "p", "open": 0.0, "form": 0.0},
-            #    {"label": "i", "open": 0.8, "form": 0.4},
-            #    {"label": "k", "open": 0.4, "form": 0.0},
-            #    {"label": "T", "open": 0.2, "form": 0.4},
-            #    {"label": "@", "open": 0.6, "form": 0.2},
-            #    {"label": "u", "open": 0.5, "form": -0.5},
-            #    {"label": "E", "open": 0.7, "form": 0.3},
-            #    {"label": "l", "open": 0.35, "form": 0.2},
-            #    {"label": "t", "open": 0.3, "form": 0.2},
-            #    {"label": "r", "open": 0.4, "form": -0.3},
-            #    {"label": "a", "open": 1.0, "form": 0.2},
-            #    {"label": "p", "open": 0.0, "form": 0.0},
-            #    {"label": "@", "open": 0.6, "form": 0.2},
-            #    {"label": "t", "open": 0.3, "form": 0.2},
-            #    {"label": "l", "open": 0.35, "form": 0.2},
-            #    {"label": "i", "open": 0.8, "form": 0.4},
-            #]
+            
             if not self._timed_visemes:
                 return False
             self._next_consume_ticks = pygame.time.get_ticks()
@@ -343,20 +308,31 @@ if __name__ == "__main__":
 
     manager.play_idle_motion()
 
+    manager.LIP_MODE = LipMode.POLLY
+    #manager.LIP_MODE = LipMode.MS_ID
+
     # 尝试加载 aeiou，成功后自动播放一句示例口型
     demo_sentence = "Hello, nice to meet you!"
+    # 记录上一次成功触发空格播放口型的时间戳（ms）
+    last_space_trigger_ticks = 0
+    # 空格触发间隔（ms）：避免长按空格时过于频繁地重复触发
+    SPACE_COOLDOWN_MS = 400
 
     while running:
+        now_ticks = pygame.time.get_ticks()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.MOUSEMOTION:
                 if pygame.mouse.get_pressed()[0]:
                     manager.handle_drag(*pygame.mouse.get_pos())
-            elif event.type == pygame.KEYDOWN:
-                # 仅响应“按下”一次，忽略长按产生的重复事件
-                if event.key == pygame.K_SPACE and not getattr(event, "repeat", False):
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                # 满足其一即触发：本次非长按重复，或距上次触发已过 cooldown（避免误过滤首次按键）
+                is_repeat = getattr(event, "repeat", False)
+                cooldown_ok = (now_ticks - last_space_trigger_ticks) >= SPACE_COOLDOWN_MS
+                if (not is_repeat) or cooldown_ok:
                     if manager.start_viseme_playback(demo_sentence):
+                        last_space_trigger_ticks = now_ticks
                         print(f"  播放口型: {demo_sentence!r}")
                     else:
                         print("  口型未启动（请安装: pip install cmudict）")
@@ -372,20 +348,23 @@ if __name__ == "__main__":
                 open_val = float(item.get("open", 0.0))
                 form_val = float(item.get("form", 0.0))
 
-                # 更精细的缩放：近似按长/短/非重读元音调整嘴巴开合
-                v = label.lower()
-                long_vowels = ("a", "i", "u", "o")      # 对应 AY/IY/UW/OW 等长元音
-                mid_vowels = ("e",)                    # 对应 AE/EH/IH 等中等开口
-                reduced_vowels = ("@",)                # 对应 AH0/AX/ER0 等非重读
+                if False:
+                    # 更精细的缩放：近似按长/短/非重读元音调整嘴巴开合
+                    v = label.lower()
+                    long_vowels = ("a", "i", "u", "o")      # 对应 AY/IY/UW/OW 等长元音
+                    mid_vowels = ("e",)                    # 对应 AE/EH/IH 等中等开口
+                    reduced_vowels = ("@",)                # 对应 AH0/AX/ER0 等非重读
 
-                if v in long_vowels:
-                    open_scaled = max(0.5, min(1.0, open_val * 1.3))
-                elif v in mid_vowels:
-                    open_scaled = max(0.3, min(0.8, open_val * 1.0))
-                elif v in reduced_vowels:
-                    open_scaled = min(0.4, open_val * 0.7)
+                    if v in long_vowels:
+                        open_scaled = max(0.5, min(1.0, open_val * 1.3))
+                    elif v in mid_vowels:
+                        open_scaled = max(0.3, min(0.8, open_val * 1.0))
+                    elif v in reduced_vowels:
+                        open_scaled = min(0.4, open_val * 0.7)
+                    else:
+                        open_scaled = min(0.35, open_val * 0.5)
                 else:
-                    open_scaled = min(0.35, open_val * 0.5)
+                    open_scaled = open_val
 
                 print(f"  播放口型: {label}, {open_scaled:.1f}, {form_val:.1f}")
                 manager.update_lip_params({
@@ -396,26 +375,19 @@ if __name__ == "__main__":
             # MS viseme ID 模式：item 只有 id，可在这里自定义 id→张嘴映射
             elif manager.LIP_MODE == LipMode.MS_ID and "id" in item:
                 vid = int(item.get("id", 0))
-                # 简单示例：越接近元音类 ID，开口越大（这里可以按 MS 官方表精调）
-                # 先给一个非常保守的占位逻辑，防止崩溃
-                base_open = 0.0
-                if vid in (1, 2, 3, 4, 5, 6, 7, 8, 11):  # 多数元音 ID
-                    base_open = 0.7
-                elif vid in (9, 10):  # 半元音/双元音之类
-                    base_open = 0.6
-                else:
-                    base_open = 0.3  # 其它（辅音）轻微张嘴
-                print(f"  播放 MS viseme ID: {vid}, open={base_open:.1f}")
+                base_open, base_form = MS_VISEME_ID_TO_PARAMS.get(vid, (0.3, 0.0))
+                print(f"  播放 MS viseme ID: {vid}, open={base_open:.1f}, form={base_form:.1f}")
                 manager.update_lip_params({
                     "ParamMouthOpenY": base_open,
-                    "ParamMouthForm": 0.0,
+                    "ParamMouthForm": base_form,
                 })
 
             manager._next_consume_ticks = now + manager._consume_interval_ms
             if not manager._timed_visemes:
                 manager._next_consume_ticks = None
+                # 播放完口型后只归零一次
+                manager.update_lip_params({"ParamMouthOpenY": 0.0, "ParamMouthForm": 0.0})
         elif not manager._timed_visemes:
-            manager.update_lip_params({"ParamMouthOpenY": 0.0, "ParamMouthForm": 0.0})
             manager._next_consume_ticks = None
 
         manager.update()
