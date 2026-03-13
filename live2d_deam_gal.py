@@ -366,7 +366,7 @@ if __name__ == "__main__":
                 else:
                     open_scaled = open_val
 
-                print(f"  播放口型: {label}, {open_scaled:.1f}, {form_val:.1f}")
+                print(f"  播放 Polly 口型: {label}, {open_scaled:.1f}, {form_val:.1f}")
                 manager.update_lip_params({
                     "ParamMouthOpenY": open_scaled,
                     "ParamMouthForm": form_val,
@@ -386,6 +386,7 @@ if __name__ == "__main__":
             if not manager._timed_visemes:
                 manager._next_consume_ticks = None
                 # 播放完口型后只归零一次
+                print(f"  播放完口型，归零嘴型")
                 manager.update_lip_params({"ParamMouthOpenY": 0.0, "ParamMouthForm": 0.0})
         elif not manager._timed_visemes:
             manager._next_consume_ticks = None
