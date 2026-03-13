@@ -10,9 +10,10 @@
 from __future__ import annotations
 
 import re
+from enum import Enum
 from typing import Iterable, List, Sequence, Tuple
 
-from viseme_standards import (
+from aeiou.viseme_standards import (
     phonemes_to_visemes,
     smooth_visemes,
     phonemes_to_ms_viseme_ids,
@@ -27,6 +28,18 @@ except Exception as e:  # pragma: no cover
     ) from e
 
 _CMU_DICT = cmudict.dict()
+
+
+class LipMode(str, Enum):
+    """
+    口型映射模式：
+
+    - POLLY: 返回带有 label/open/form 的口型单元（适合直接驱动 Live2D ParamMouthOpenY / ParamMouthForm）
+    - MS_ID: 返回 Microsoft 风格的 viseme ID（0–21），用于在上层做自定义映射
+    """
+
+    POLLY = "polly"
+    MS_ID = "ms_id"
 
 
 def text_to_phonemes_cmudict(text: str) -> list[str]:
@@ -82,8 +95,51 @@ def text_to_visemes(
     - 如需更强大的 G2P，可在上层自行换成 g2p_en / 其他库，再复用 phonemes_to_smoothed_visemes。
     """
     phonemes = text_to_phonemes_cmudict(text)
-    vis = phonemes_to_smoothed_visemes(phonemes, attack_alpha=attack_alpha, release_alpha=release_alpha)
+    vis = phonemes_to_smoothed_visemes(
+        phonemes, attack_alpha=attack_alpha, release_alpha=release_alpha
+    )
     return phonemes, vis
+
+
+def text_to_lip_units(
+    text: str,
+    *,
+    mode: LipMode = LipMode.POLLY,
+    attack_alpha: float = 0.45,
+    release_alpha: float = 0.2,
+) -> list[dict]:
+    """
+    高层封装：一句英文文本 → 口型「单元」列表，支持两种模式：
+
+    - LipMode.POLLY: 返回 [{"label": str, "open": float, "form": float}, ...]
+    - LipMode.MS_ID: 返回 [{"id": int}, ...]，id 为 0–21 的占位 viseme ID
+
+    这样上层（如 live2d_deam_gal.py）只需要根据 mode 分支消费即可。
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+
+    phonemes, visemes = text_to_visemes(
+        text, attack_alpha=attack_alpha, release_alpha=release_alpha
+    )
+
+    if not phonemes or not visemes:
+        return []
+
+    if mode == LipMode.POLLY:
+        # label/open/form 直接用于驱动 Live2D 口型
+        return [
+            {"label": label, "open": float(open_), "form": float(form)}
+            for (label, open_, form) in visemes
+        ]
+
+    if mode == LipMode.MS_ID:
+        ids = phonemes_to_ms_ids(phonemes)
+        return [{"id": int(v)} for v in ids]
+
+    # 未知模式，兜底为空列表，避免上层崩溃
+    return []
 
 
 # 每个音节约 0.08s，用于无 TTS 时间戳时的 fallback

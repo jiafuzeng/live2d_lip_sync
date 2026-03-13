@@ -14,8 +14,10 @@ import pygame
 from pygame.locals import DOUBLEBUF, OPENGL
 import live2d.v3 as live2d
 from live2d.v3 import StandardParams
+from image_compat import Image
 from aeiou.phoneme_viseme import LipMode, text_to_lip_units
 from aeiou.phoneme_viseme import text_to_timed_visemes_fallback
+from background.img_ import get_background_image_path
 
 # 初始化 Live2D 日志
 live2d.enableLog(True)
@@ -77,7 +79,7 @@ class Live2DModelManager:
         # 创建并加载模型
         self.model = live2d.LAppModel()
 
-        full_path = os.path.join(resources.RESOURCES_DIRECTORY, model_path)
+        full_path = os.path.join("Resources", model_path)
         self.model.LoadModelJson(full_path)
 
         self.model.Resize(*display_size)
@@ -87,6 +89,9 @@ class Live2DModelManager:
         self.current_audio_rms = 0.0
         self.current_emotion: str | None = None
         self.clock = pygame.time.Clock()
+
+        # 尝试从 background/img_.py 获取背景图绝对路径
+        bg_abs_path = get_background_image_path()
 
         # 元音/口型播放：消费 list，按间隔取一条驱动嘴型，list 空则嘴型归 0
         self._timed_visemes: list[tuple[str, float, float, float, float]] = []
@@ -99,11 +104,7 @@ class Live2DModelManager:
 
         # 加载背景图片
         try:
-            self.background = (
-                Image(os.path.join(resources.RESOURCES_DIRECTORY, background_path))
-                if background_path
-                else None
-            )
+            self.background = Image(bg_abs_path) if bg_abs_path else None
         except Exception:
             self.background = None
 

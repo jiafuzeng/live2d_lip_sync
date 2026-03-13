@@ -275,9 +275,5 @@ def smooth_visemes(
         alpha = attack_alpha if target_open > last_open else release_alpha
         last_open += alpha * (target_open - last_open)
         last_form += alpha * (target_form - last_form)
-        # 为了让 ParamMouthForm 在 0 附近既有正值也有负值，这里做一个简单的重心平移和缩放：
-        # 1. 将原始 form 以 0.25 为中心平移到 0 附近；
-        # 2. 略微放大振幅，使负值更容易出现，便于区分「圆嘴」与「扁嘴」。
-        adjusted_form = (last_form - 0.25) * 1.5
-        out.append((label, round(last_open, 4), round(adjusted_form, 4)))
+        out.append((label, round(last_open, 4), round(last_form, 4)))
     return out
