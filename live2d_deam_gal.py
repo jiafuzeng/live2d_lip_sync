@@ -297,6 +297,7 @@ if __name__ == "__main__":
 
     # 尝试加载 aeiou，成功后自动播放一句示例口型
     demo_sentence = "Hello, nice to meet you!"
+    #demo_sentence = "apple " * 10
     # 记录上一次成功触发空格播放口型的时间戳（ms）
     last_space_trigger_ticks = 0
     # 空格触发间隔（ms）：避免长按空格时过于频繁地重复触发
