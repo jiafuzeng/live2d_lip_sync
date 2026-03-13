@@ -168,9 +168,10 @@ manager.start_viseme_playback("Hello, nice to meet you!")  # 口型序列
 在 `live2d_deam_gal.py` 中，类属性 `LIP_MODE` 决定口型数据格式：
 
 ```python
-# 二选一（类属性或运行时修改 manager.LIP_MODE）
-LIP_MODE: LipMode = LipMode.POLLY   # 使用 label / open / form 驱动 ParamMouthOpenY / ParamMouthForm
-LIP_MODE: LipMode = LipMode.MS_ID   # 使用 Microsoft 官方 viseme ID (0–21)，再映射到 open / form
+# 三选一（类属性或运行时修改 manager.LIP_MODE）
+LIP_MODE: LipMode = LipMode.POLLY    # 使用 label / open / form 驱动 ParamMouthOpenY / ParamMouthForm
+LIP_MODE: LipMode = LipMode.MS_ID    # 使用 Microsoft 官方 viseme ID (0–21)，再映射到 open / form
+LIP_MODE: LipMode = LipMode.DISNEY   # 使用 Disney 12 口型类别 ID (1–12)，再映射到 open / form
 ```
 
 - **POLLY 模式**  
@@ -180,8 +181,13 @@ LIP_MODE: LipMode = LipMode.MS_ID   # 使用 Microsoft 官方 viseme ID (0–21)
 
 - **MS_ID 模式**  
   - 使用 `aeiou.text_to_lip_units(..., mode=LipMode.MS_ID)`，返回 Microsoft 官方 0–21 viseme ID 序列 `{"id": int}`；  
-  - 在 `live2d_deam_gal.py` 顶部的 `MS_VISEME_ID_TO_PARAMS` 中，按官方表将每个 ID 近似映射到 `(open, form)`；  
+  - 在 `aeiou/viseme_ms.py` 中的 `MS_VISEME_ID_TO_PARAMS` 会按官方表将每个 ID 近似映射到 `(open, form)`；  
   - 便于与 Azure Neural TTS / System.Speech 等返回 viseme ID 的引擎对齐，实现统一的口型驱动。
+
+- **DISNEY 模式**  
+  - 使用 `aeiou.text_to_lip_units(..., mode=LipMode.DISNEY)`，返回 Disney 经典 12 口型类别 ID 序列 `{"id": int}`（1–12）；  
+  - 在 `aeiou/viseme_disney.py` 中的 `DISNEY_VISEME_ID_TO_PARAMS` 会将每个 ID 近似映射到 `(open, form)`；  
+  - 适合已有「12 口型」美术设计或希望沿用传统动画嘴型分组的场景。
 
 ### 窗口与模型路径
 
