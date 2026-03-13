@@ -168,13 +168,20 @@ manager.start_viseme_playback("Hello, nice to meet you!")  # 口型序列
 在 `live2d_deam_gal.py` 中，类属性 `LIP_MODE` 决定口型数据格式：
 
 ```python
-# 二选一
-LIP_MODE: LipMode = LipMode.POLLY   # 使用 label / open / form 驱动 ParamMouthOpenY、ParamMouthForm
-LIP_MODE: LipMode = LipMode.MS_ID   # 使用 Microsoft 风格 viseme ID (0–21)，由内部映射到张嘴度
+# 二选一（类属性或运行时修改 manager.LIP_MODE）
+LIP_MODE: LipMode = LipMode.POLLY   # 使用 label / open / form 驱动 ParamMouthOpenY / ParamMouthForm
+LIP_MODE: LipMode = LipMode.MS_ID   # 使用 Microsoft 官方 viseme ID (0–21)，再映射到 open / form
 ```
 
-- **POLLY**：适合直接驱动 Live2D 的 ParamMouthOpenY / ParamMouthForm。
-- **MS_ID**：便于与 Azure TTS 等返回 MS viseme 的引擎对齐，再在本地做 id→口型映射。
+- **POLLY 模式**  
+  - 使用 `aeiou.text_to_lip_units(..., mode=LipMode.POLLY)`，直接返回 `{"label","open","form"}` 序列；  
+  - 本项目中会把 `open` / `form` 分别映射到 Live2D 的 `ParamMouthOpenY` / `ParamMouthForm`；  
+  - 适合本地调试与需要更细腻嘴型变化的场景。
+
+- **MS_ID 模式**  
+  - 使用 `aeiou.text_to_lip_units(..., mode=LipMode.MS_ID)`，返回 Microsoft 官方 0–21 viseme ID 序列 `{"id": int}`；  
+  - 在 `live2d_deam_gal.py` 顶部的 `MS_VISEME_ID_TO_PARAMS` 中，按官方表将每个 ID 近似映射到 `(open, form)`；  
+  - 便于与 Azure Neural TTS / System.Speech 等返回 viseme ID 的引擎对齐，实现统一的口型驱动。
 
 ### 窗口与模型路径
 
@@ -218,11 +225,16 @@ LIP_MODE: LipMode = LipMode.MS_ID   # 使用 Microsoft 风格 viseme ID (0–21)
 
 **可能原因（不限于 IDE）：**
 
-1. **键盘焦点**：从终端直接运行 `python live2d_deam_gal.py` 时，焦点往往仍在终端，前几次按空格被终端接收，Pygame 收不到。SDL2 在 macOS 上新窗口有时不会自动获得焦点。
-2. **窗口未成为 key window**：代码在窗口创建后会尝试对 NSWindow 调 `makeKeyAndOrderFront`，使窗口前置并接收按键；若仍无效，请**用鼠标点击一次 Live2D 窗口**后再按空格。
-3. **按键 repeat 被误过滤**：部分环境下前几次 KEYDOWN 可能带 `repeat=True`，原先仅靠该标志过滤长按会误忽略；已改为「时间间隔 cooldown」：首次按键或距上次触发超过 400ms 即触发，避免误过滤。
+1. **键盘焦点**：从终端直接运行 `python live2d_deam_gal.py` 时，焦点往往仍在终端，前几次按空格被终端接收，Pygame 收不到。SDL2 在 macOS 上新窗口有时不会自动获得焦点，多试几次才会把焦点切到新窗口。
+2. **窗口未成为 key window**：代码在窗口创建后会尝试对 NSWindow 调 `makeKeyAndOrderFront`，使窗口前置并接收按键；但在某些环境（不同终端/窗口管理器）下可能仍需要**手动点击几次 Live2D 窗口**才能真正成为 key window。
+3. **按键 repeat 被误过滤**：部分环境下前几次 KEYDOWN 可能带 `repeat=True`，原先仅靠该标志过滤长按会误忽略；当前实现已改为「时间间隔 cooldown」：首次按键或距上次触发超过 400ms 即触发，避免误过滤。
 
-**建议**：若按空格无反应，先**点击一次 Live2D 窗口**再按空格。
+**建议（手动测试步骤）：**
+
+1. 在项目根目录运行：`python live2d_deam_gal.py`。  
+2. 出现 Live2D 窗口后，**用鼠标多点击几次窗口内部**，直到你确定窗口在最前面。  
+3. 按空格进行 2–3 次尝试（**触发条件是按下空格键一次，即收到 KEYDOWN 事件；长按空格不会额外触发**，期间可适当间隔 0.5s 左右），观察终端是否打印 `播放口型: 'Hello, nice to meet you!'`，以及模型嘴型是否随之变化——**一般在尝试约第 3 次后就会开始正常、稳定触发**。  
+4. 等播放完一轮口型后，再按几次空格确认可以稳定重复触发；如中途有几次无反应，再点击一次窗口后继续测试。
 
 ---
 

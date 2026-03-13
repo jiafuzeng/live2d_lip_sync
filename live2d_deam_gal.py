@@ -308,6 +308,10 @@ if __name__ == "__main__":
 
     manager.play_idle_motion()
 
+    # 选择口型模式：
+    # - POLLY:  aeiou 直接返回 label/open/form，映射到 ParamMouthOpenY/Form，细节更丰富，适合本地调试
+    # - MS_ID:  使用 Microsoft 官方 0–21 viseme ID，再通过 MS_VISEME_ID_TO_PARAMS 近似映射到 open/form，
+    #           方便与 Azure TTS 等返回 viseme ID 的服务对齐
     manager.LIP_MODE = LipMode.POLLY
     #manager.LIP_MODE = LipMode.MS_ID
 
