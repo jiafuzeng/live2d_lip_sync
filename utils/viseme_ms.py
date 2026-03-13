@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import List
 
-from aeiou.viseme_polly import ARPABET_TO_IPA, arpabet_to_ipa
+from utils.arpabet_ipa import arpabet_to_ipa
 
 # IPA → Microsoft viseme ID (0–21)
 MS_IPA_TO_VISEME_ID: dict[str, int] = {
@@ -103,21 +103,20 @@ def arpabet_to_ms_viseme_id(arpabet: str) -> int:
     return MS_IPA_TO_VISEME_ID.get(ipa, MS_DEFAULT_VISEME_ID)
 
 
-def phonemes_to_ms_viseme_ids(phonemes: list[str]) -> list[int]:
+
+def phonemes_to_ms_visemes(phonemes: list[str]) -> list[tuple[str, float, float]]:
     """音素列表（ARPAbet）→ Microsoft viseme ID 列表。"""
-    out: list[int] = []
+    out: list[tuple[str, float, float]] = []
     for p in phonemes:
         if p == " " or not p.strip():
             continue
-        out.append(arpabet_to_ms_viseme_id(p))
+        viseme_id = arpabet_to_ms_viseme_id(p)
+        open_, form = MS_VISEME_ID_TO_PARAMS[viseme_id]
+        out.append((p, open_, form))
     return out
 
-
 __all__ = [
-    "MS_IPA_TO_VISEME_ID",
-    "MS_DEFAULT_VISEME_ID",
-    "MS_VISEME_ID_TO_PARAMS",
     "arpabet_to_ms_viseme_id",
-    "phonemes_to_ms_viseme_ids",
+    "phonemes_to_ms_visemes",
 ]
 

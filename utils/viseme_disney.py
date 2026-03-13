@@ -7,10 +7,8 @@ Disney 12 口型（viseme）标准相关工具。
 """
 
 from __future__ import annotations
+from utils.arpabet_ipa import arpabet_to_ipa
 
-from typing import List
-
-from aeiou.viseme_polly import ARPABET_TO_IPA, arpabet_to_ipa
 
 # IPA → Disney 12 口型类别 ID
 DISNEY_IPA_TO_VISEME_ID: dict[str, int] = {
@@ -112,12 +110,20 @@ def phonemes_to_disney_viseme_ids(phonemes: list[str]) -> list[int]:
         out.append(arpabet_to_disney_viseme_id(p))
     return out
 
+def phonemes_to_disney_visemes(phonemes: list[str]) -> list[tuple[str, float, float]]:
+    """音素列表（ARPAbet）→ Disney 12 口型类别 ID 列表。"""
+    out: list[tuple[str, float, float]] = []
+    for p in phonemes:
+        if p == " " or not p.strip():
+            continue
+        viseme_id = arpabet_to_disney_viseme_id(p)
+        open_, form = DISNEY_VISEME_ID_TO_PARAMS[viseme_id]
+        out.append((p, open_, form))
+    return out
 
 __all__ = [
-    "DISNEY_IPA_TO_VISEME_ID",
-    "DISNEY_DEFAULT_VISEME_ID",
-    "DISNEY_VISEME_ID_TO_PARAMS",
     "arpabet_to_disney_viseme_id",
     "phonemes_to_disney_viseme_ids",
+    "phonemes_to_disney_visemes",
 ]
 

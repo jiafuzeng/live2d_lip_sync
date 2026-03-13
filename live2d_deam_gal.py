@@ -16,10 +16,9 @@ from pygame.locals import DOUBLEBUF, OPENGL
 import live2d.v3 as live2d
 from live2d.v3 import StandardParams
 from image_compat import Image
-from aeiou.phoneme_viseme import LipMode, text_to_lip_units
-from aeiou.phoneme_viseme import text_to_timed_visemes_fallback
-from aeiou.viseme_ms import MS_VISEME_ID_TO_PARAMS
-from aeiou.viseme_disney import DISNEY_VISEME_ID_TO_PARAMS
+from utils.phoneme_viseme import LipMode, get_phoneme_viseme
+from utils.viseme_ms import MS_VISEME_ID_TO_PARAMS
+from utils.viseme_disney import DISNEY_VISEME_ID_TO_PARAMS
 from background.img_ import get_background_image_path
 # 初始化 Live2D 日志
 live2d.enableLog(True)
@@ -130,7 +129,7 @@ class Live2DModelManager:
         bg_abs_path = get_background_image_path()
 
         # 元音/口型播放：消费 list，按间隔取一条驱动嘴型，list 空则嘴型归 0
-        self._timed_visemes: list[tuple[str, float, float, float, float]] = []
+        self._timed_visemes: list[tuple[str, float, float]] = []
         self._next_consume_ticks: Optional[int] = None  # 下一帧可消费的时间点（ms）
         self._consume_interval_ms: int = 120  # 每条口型间隔（约 0.25s）
 
@@ -191,7 +190,7 @@ class Live2DModelManager:
         返回 True 表示成功启动，False 表示未安装 aeiou 或文本无有效口型。
         """
         try:
-            self._timed_visemes = text_to_lip_units(text, mode=self.LIP_MODE)
+            self._timed_visemes = get_phoneme_viseme(text, mode=self.LIP_MODE)
             
             if not self._timed_visemes:
                 return False
@@ -327,55 +326,30 @@ if __name__ == "__main__":
         if manager._timed_visemes and manager._next_consume_ticks is not None and now >= manager._next_consume_ticks:
             item = manager._timed_visemes.pop(0)
 
-            # Polly 模式：item 带有 label/open/form
-            if manager.LIP_MODE == LipMode.POLLY and "label" in item:
-                label = str(item.get("label", "") or "")
-                open_val = float(item.get("open", 0.0))
-                form_val = float(item.get("form", 0.0))
+            label,open_val,form_val = item
+            if False:
+                # 更精细的缩放：近似按长/短/非重读元音调整嘴巴开合
+                v = label.lower()
+                long_vowels = ("a", "i", "u", "o")      # 对应 AY/IY/UW/OW 等长元音
+                mid_vowels = ("e",)                    # 对应 AE/EH/IH 等中等开口
+                reduced_vowels = ("@",)                # 对应 AH0/AX/ER0 等非重读
 
-                if False:
-                    # 更精细的缩放：近似按长/短/非重读元音调整嘴巴开合
-                    v = label.lower()
-                    long_vowels = ("a", "i", "u", "o")      # 对应 AY/IY/UW/OW 等长元音
-                    mid_vowels = ("e",)                    # 对应 AE/EH/IH 等中等开口
-                    reduced_vowels = ("@",)                # 对应 AH0/AX/ER0 等非重读
-
-                    if v in long_vowels:
-                        open_scaled = max(0.5, min(1.0, open_val * 1.3))
-                    elif v in mid_vowels:
-                        open_scaled = max(0.3, min(0.8, open_val * 1.0))
-                    elif v in reduced_vowels:
-                        open_scaled = min(0.4, open_val * 0.7)
-                    else:
-                        open_scaled = min(0.35, open_val * 0.5)
+                if v in long_vowels:
+                    open_scaled = max(0.5, min(1.0, open_val * 1.3))
+                elif v in mid_vowels:
+                    open_scaled = max(0.3, min(0.8, open_val * 1.0))
+                elif v in reduced_vowels:
+                    open_scaled = min(0.4, open_val * 0.7)
                 else:
-                    open_scaled = open_val
+                    open_scaled = min(0.35, open_val * 0.5)
+            else:
+                open_scaled = open_val
 
-                print(f"  播放 Polly 口型: {label}, {open_scaled:.1f}, {form_val:.1f}")
-                manager.update_lip_params({
-                    "ParamMouthOpenY": open_scaled,
-                    "ParamMouthForm": form_val,
-                })
-
-            # MS viseme ID 模式：item 只有 id，可在这里自定义 id→张嘴映射
-            elif manager.LIP_MODE == LipMode.MS_ID and "id" in item:
-                vid = int(item.get("id", 0))
-                base_open, base_form = MS_VISEME_ID_TO_PARAMS.get(vid, (0.3, 0.0))
-                print(f"  播放 MS viseme ID: {vid}, open={base_open:.1f}, form={base_form:.1f}")
-                manager.update_lip_params({
-                    "ParamMouthOpenY": base_open,
-                    "ParamMouthForm": base_form,
-                })
-
-            # Disney 12 口型模式：item 只有 id，可在这里自定义 id→张嘴映射
-            elif manager.LIP_MODE == LipMode.DISNEY and "id" in item:
-                did = int(item.get("id", 0))
-                base_open, base_form = DISNEY_VISEME_ID_TO_PARAMS.get(did, (0.3, 0.0))
-                print(f"  播放 Disney viseme ID: {did}, open={base_open:.1f}, form={base_form:.1f}")
-                manager.update_lip_params({
-                    "ParamMouthOpenY": base_open,
-                    "ParamMouthForm": base_form,
-                })
+            print(f"  播放 {manager.LIP_MODE} 口型: {label}, {open_scaled:.1f}, {form_val:.1f}")
+            manager.update_lip_params({
+                "ParamMouthOpenY": open_scaled,
+                "ParamMouthForm": form_val,
+            })
 
             manager._next_consume_ticks = now + manager._consume_interval_ms
             if not manager._timed_visemes:
